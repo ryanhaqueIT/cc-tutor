@@ -154,12 +154,37 @@ After deploying, Wrangler prints your worker URL (like `https://cc-tutor-proxy.y
 
 To change the voice, edit `ELEVENLABS_VOICE_ID` in `worker/wrangler.toml` and redeploy.
 
+## Guide / Topic System
+
+The panel has a **Guide** toggle (next to the Model picker) that switches the tutor between different instruction sets:
+
+| Guide | What it does |
+|---|---|
+| **General** | Broad Claude Code expertise. Ask anything about slash commands, CLAUDE.md, MCP, hooks, etc. |
+| **CBA Setup** | Step-by-step walkthrough for setting up Claude Code at CBA. Guides engineers through installation, API key config, first session, CLAUDE.md setup, permissions, IDE integration, and team conventions. |
+
+When a guide is active, the tutor sees the user's screen and knows what step they're on. It skips completed steps, helps with errors, and adapts to where the user is. Switching guides clears conversation history so context doesn't bleed across topics.
+
+### Customizing the CBA Setup Guide
+
+Edit the CBA setup instructions in `leanring-buddy/CompanionManager.swift`. Search for `case "cba-setup":` — that block contains the full step-by-step prompt. Replace the placeholder steps with your organization's actual process (internal proxy URLs, approved MCP servers, team CLAUDE.md conventions, specific tooling, etc.).
+
+### Adding New Guides
+
+To add a new guide (e.g., "Security Review", "PR Workflow", "New Engineer Onboarding"):
+
+1. **Add a topic entry** in `CompanionManager.swift` — find `availableTopics` and add a new `(id:, label:)` tuple
+2. **Add the prompt** in `CompanionManager.swift` — add a new `case` in `topicSpecificPromptBlock(for:)` with the step-by-step instructions
+3. **Add the button** in `CompanionPanelView.swift` — find `topicPickerRow` and add a `topicOptionButton(label:, topicID:)` call
+
+The prompt format is plain text. Write the instructions as if you're briefing a knowledgeable tutor — tell it the steps, the context, what to watch for on screen, and any constraints. Claude handles the rest (adapting to where the user is, referencing their screen, pointing at things).
+
 ## Project Structure
 
 ```
 leanring-buddy/                              # Swift source (the typo is intentional/legacy)
-  CompanionManager.swift                       # Central state machine + Claude Code system prompt
-  CompanionPanelView.swift                     # Menu bar panel UI (settings, permissions, model picker)
+  CompanionManager.swift                       # Central state machine, system prompts, topic/guide system
+  CompanionPanelView.swift                     # Menu bar panel UI (settings, permissions, model + guide pickers)
   ClaudeAPI.swift                              # Claude streaming SSE client
   ElevenLabsTTSClient.swift                    # ElevenLabs text-to-speech playback
   OverlayWindow.swift                          # Full-screen transparent cursor overlay + pointing
@@ -185,7 +210,7 @@ Menu bar app (no dock icon, `LSUIElement=true`) with two `NSPanel` windows — o
 
 **Voice pipeline:** Push-to-talk (Ctrl+Option via CGEvent tap) captures audio with AVAudioEngine, streams PCM16 over a websocket to AssemblyAI for real-time transcription.
 
-**AI pipeline:** Transcript + screenshots of all displays (via ScreenCaptureKit, 1280px JPEG) are sent to Claude via SSE streaming. The system prompt contains deep Claude Code expertise covering slash commands, CLAUDE.md files, MCP servers, hooks, permissions, settings, IDE integrations, context management, git workflows, plan mode, and more. Claude's response is spoken aloud via ElevenLabs TTS.
+**AI pipeline:** Transcript + screenshots of all displays (via ScreenCaptureKit, 1280px JPEG) are sent to Claude via SSE streaming. The system prompt contains deep Claude Code expertise covering slash commands, CLAUDE.md files, MCP servers, hooks, permissions, settings, IDE integrations, context management, git workflows, plan mode, and more. A topic/guide picker appends topic-specific instruction blocks to the base prompt (e.g., the CBA Setup guide adds a 7-step walkthrough). Claude's response is spoken aloud via ElevenLabs TTS.
 
 **Pointing:** Claude can embed `[POINT:x,y:label:screenN]` tags in responses. The overlay parses these, maps screenshot-pixel coordinates to display-point coordinates across multiple monitors, and animates the blue cursor along a bezier arc to the target.
 
