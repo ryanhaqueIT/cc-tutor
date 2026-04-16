@@ -31,6 +31,9 @@ struct CompanionPanelView: View {
 
                 modelPickerRow
                     .padding(.horizontal, 16)
+
+                topicPickerRow
+                    .padding(.horizontal, 16)
             }
 
             if !companionManager.allPermissionsGranted {
@@ -127,7 +130,9 @@ struct CompanionPanelView: View {
     @ViewBuilder
     private var permissionsCopySection: some View {
         if companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
-            Text("Hold Control+Option to ask about Claude Code.")
+            Text(companionManager.selectedTopic == "general"
+                 ? "Hold Control+Option to ask about Claude Code."
+                 : "Hold Control+Option — \(activeTopicLabel) guide active.")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(DS.Colors.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -641,6 +646,51 @@ struct CompanionPanelView: View {
         .pointerCursor()
     }
 
+    // MARK: - Topic Picker
+
+    private var topicPickerRow: some View {
+        HStack {
+            Text("Guide")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(DS.Colors.textSecondary)
+
+            Spacer()
+
+            HStack(spacing: 0) {
+                topicOptionButton(label: "General", topicID: "general")
+                topicOptionButton(label: "CBA Setup", topicID: "cba-setup")
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(DS.Colors.borderSubtle, lineWidth: 0.5)
+            )
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func topicOptionButton(label: String, topicID: String) -> some View {
+        let isSelected = companionManager.selectedTopic == topicID
+        return Button(action: {
+            companionManager.setSelectedTopic(topicID)
+        }) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(isSelected ? DS.Colors.textPrimary : DS.Colors.textTertiary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .pointerCursor()
+    }
+
     // MARK: - DM Farza Button
 
     private var dmFarzaButton: some View {
@@ -723,6 +773,13 @@ struct CompanionPanelView: View {
             .fill(DS.Colors.background)
             .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
             .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+    }
+
+    /// The display name of the currently active topic, used in status copy.
+    private var activeTopicLabel: String {
+        CompanionManager.availableTopics
+            .first(where: { $0.id == companionManager.selectedTopic })?.label
+            ?? companionManager.selectedTopic
     }
 
     private var statusDotColor: Color {

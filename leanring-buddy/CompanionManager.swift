@@ -116,6 +116,102 @@ final class CompanionManager: ObservableObject {
         claudeAPI.model = model
     }
 
+    // MARK: - Topic / Guide Selection
+
+    /// The active tutoring topic. Each topic injects a topic-specific context block
+    /// into the system prompt so the tutor gives guidance tailored to that workflow.
+    /// "general" is the default — broad Claude Code expertise with no specific guide.
+    /// Persisted to UserDefaults so the choice survives app restarts.
+    @Published var selectedTopic: String = UserDefaults.standard.string(forKey: "selectedTutorTopic") ?? "general"
+
+    func setSelectedTopic(_ topic: String) {
+        selectedTopic = topic
+        UserDefaults.standard.set(topic, forKey: "selectedTutorTopic")
+        // Clear conversation history when switching topics so the tutor
+        // doesn't carry over context from a different guide.
+        conversationHistory.removeAll()
+    }
+
+    /// Returns the list of available topic IDs and their display labels.
+    /// Add new topics here and in topicSpecificPromptBlock(for:) below.
+    static let availableTopics: [(id: String, label: String)] = [
+        (id: "general", label: "General"),
+        (id: "cba-setup", label: "CBA Setup"),
+    ]
+
+    /// Returns a topic-specific instruction block that gets appended to the
+    /// base system prompt. Returns nil for "general" (no extra context needed).
+    private static func topicSpecificPromptBlock(for topicID: String) -> String? {
+        switch topicID {
+
+        case "cba-setup":
+            return """
+            ACTIVE GUIDE — CBA Claude Code Setup:
+            you are now guiding a CBA (Commonwealth Bank of Australia) engineer through setting up claude code on their machine. follow these steps in order. the user may be at any step — look at their screen to figure out where they are and guide them to the next step. if they've already completed a step, acknowledge it and move on. if they're stuck, help them through it.
+
+            when the user first activates push-to-talk in this mode, introduce yourself briefly and ask them where they are in the setup process, or if they're starting fresh. then guide them step by step.
+
+            step 1 — install claude code:
+            - they need node.js 18 or later installed. if you can see a terminal, suggest they run "node --version" to check.
+            - install command: npm install -g @anthropic-ai/claude-code
+            - after install, they should be able to run "claude --version" to verify
+
+            step 2 — configure the api key:
+            - they need an anthropic api key. at CBA this is provisioned through the internal platform team.
+            - the key is set via environment variable: export ANTHROPIC_API_KEY=sk-ant-their-key-here
+            - suggest they add it to their shell profile so it persists (for example, dot zshrc or dot bashrc)
+            - they can verify it's set by running "echo $ANTHROPIC_API_KEY" in terminal
+
+            step 3 — first session:
+            - cd into a project directory they want to work on
+            - run "claude" to start a session
+            - explain that claude code reads the current directory and any CLAUDE.md file in the repo
+            - suggest they try a simple task first, like "explain the structure of this project"
+
+            step 4 — set up CLAUDE.md:
+            - every repo should have a CLAUDE.md at the root with project-specific instructions
+            - they can run "/init" inside claude code to auto-generate one
+            - explain what goes in it: build commands, test commands, code style conventions, project architecture notes
+            - this is how the team standardizes how claude code behaves across the codebase
+
+            step 5 — configure permissions:
+            - explain the permission system: claude code asks before running tools like bash commands or file edits
+            - for CBA projects, suggest they review the default permission settings
+            - show them "/permissions" to see current settings
+            - show them how settings.json works for project-level permission overrides
+
+            step 6 — ide integration:
+            - if they use vs code, suggest installing the claude code extension
+            - if they use jetbrains, suggest the jetbrains plugin
+            - explain that the ide extension connects to the same claude code session
+
+            step 7 — team conventions:
+            - encourage them to share their CLAUDE.md with the team via the repo
+            - mention that settings.json can be committed for team-wide defaults
+            - suggest they try "/review" on a pull request or "/commit" to generate commit messages
+
+            important cba context:
+            - always be mindful that this is a banking environment — never suggest disabling security features
+            - if they mention proxy or network issues, suggest they check with their platform team about corporate proxy configuration
+            - don't suggest installing random npm packages or mcp servers without noting they should check if it's approved
+            - be encouraging — many CBA engineers are using claude code for the first time
+            """
+
+        default:
+            return nil
+        }
+    }
+
+    /// Builds the full system prompt by combining the base Claude Code expertise
+    /// prompt with any topic-specific guide instructions.
+    private func buildSystemPrompt() -> String {
+        var prompt = Self.companionVoiceResponseSystemPrompt
+        if let topicBlock = Self.topicSpecificPromptBlock(for: selectedTopic) {
+            prompt += "\n\n" + topicBlock
+        }
+        return prompt
+    }
+
     /// User preference for whether the Clicky cursor should be shown.
     /// When toggled off, the overlay is hidden and push-to-talk is disabled.
     /// Persisted to UserDefaults so the choice survives app restarts.
@@ -636,7 +732,7 @@ final class CompanionManager: ObservableObject {
 
                 let (fullResponseText, _) = try await claudeAPI.analyzeImageStreaming(
                     images: labeledImages,
-                    systemPrompt: Self.companionVoiceResponseSystemPrompt,
+                    systemPrompt: buildSystemPrompt(),
                     conversationHistory: historyForAPI,
                     userPrompt: transcript,
                     onTextChunk: { _ in
